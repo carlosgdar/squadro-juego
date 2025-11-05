@@ -1,436 +1,432 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Squadro - ¡Victoria Clara!</title>
-  <style>
-    :root {
-      --size: min(92vmin, 780px);
-      --slot: calc(var(--size) / 8);
-      --trough: calc(var(--slot) * 1.4);
-      --gap: 3px;
-    }
-    * { box-sizing: border-box; margin:0; padding:0; }
-    body {
-      background: #000;
-      color: #fff;
-      font-family: system-ui, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      padding: 1rem;
-      gap: 1rem;
-    }
-    #board {
-      display: grid;
-      grid-template-columns: var(--trough) repeat(5, var(--slot)) var(--trough);
-      grid-template-rows: var(--trough) repeat(5, var(--slot)) var(--trough);
-      gap: var(--gap);
-      background: #111;
-      padding: var(--gap);
-      border: 4px solid #ffd700;
-      width: var(--size);
-      height: var(--size);
-    }
-    .slot, .trough {
-      background: #000;
-      border: 1px solid #333;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-    }
-    .trough { 
-      border: 3px solid #ffd700; 
-      background: #111; 
-      font-weight: bold;
-      color: #ffd700;
-    }
-    .piece {
-      width: 0; height: 0;
-      border: 13px solid transparent;
-      cursor: pointer;
-      transition: all .25s ease;
-      position: relative;
-      z-index: 10;
-    }
-    .piece:hover { transform: scale(1.35); }
-    
-    /* NARANJA (Jugador 1) */
-    .p1 { border-bottom-color: #ff8c00; }
-    .p1.dir-right  { border-left-color: #ff8c00; }
-    .p1.dir-left   { border-right-color: #ff8c00; }
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Squadro — Responsive & Final</title>
+<style>
+  :root{
+    --size: min(92vmin, 900px);
+    --piece-ratio: 0.145; /* 80px / 550px ≈ 0.145 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background: url('img/Fondo.png') center/cover no-repeat fixed;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
+    min-height:100vh;
+    padding:16px;
+    color:#fff;
+  }
 
-    /* AZUL (IA) */
-    .p2 { border-top-color: #1e90ff; }
-    .p2.dir-down   { border-top-color: #1e90ff; }
-    .p2.dir-up     { border-bottom-color: #1e90ff; }
+  #status{font-weight:700;padding:8px 12px;background:rgba(0,0,0,0.45);border-radius:10px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  button{padding:10px 16px;border-radius:10px;border:2px solid #ffd700;background:#111;color:#ffd700;cursor:pointer;font-weight:700}
+  button:hover{transform:translateY(-3px);background:#ffd700;color:#000}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 
-    .completed { 
-      opacity: .3; 
-      filter: grayscale(1); 
-      transform: scale(0.9);
-    }
+  #board-container{
+    width:var(--size);
+    height:var(--size);
+    position:relative;
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+    background: url('img/Tablero.png') center/contain no-repeat;
+    background-size:100% 100%;
+  }
 
-    .steps {
-      font-size: 0.65rem;
-      margin-top: 2px;
-      color: #ffd700;
-      font-weight: bold;
-    }
+  .overlay{position:absolute;inset:0;pointer-events:none}
 
-    .controls { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
-    button {
-      padding: .9rem 1.8rem;
-      font-size: 1.2rem;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    #reset { background: #ffd700; color: #000; }
-    #undo  { background: #444; color: #fff; }
-    #undo:disabled { background: #222; cursor: not-allowed; }
+  .piece{
+    position:absolute;
+    width: calc(var(--size) * var(--piece-ratio));
+    height: calc(var(--size) * var(--piece-ratio));
+    transform:translate(-50%,-50%);
+    transition:left 260ms cubic-bezier(.2,.9,.3,1), top 260ms cubic-bezier(.2,.9,.3,1);
+    pointer-events:auto;
+    z-index:20;
+    user-select:none;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+  }
+  .p1{background-image:url('img/amarillo.png')}
+  .p2{background-image:url('img/rojo.png');filter:brightness(.95)}
+  .piece.completed{opacity:.45;transform:translate(-50%,-50%) scale(.85)}
 
-    #status {
-      font-size: 1.6rem;
-      font-weight: bold;
-      text-align: center;
-      min-height: 2.5rem;
-      padding: 0.5rem;
-    }
+  #winner-message{min-height:48px}
 
-    /* MENSAJE DE VICTORIA */
-    .winner {
-      font-size: 2.2rem;
-      font-weight: bold;
-      text-align: center;
-      padding: 1rem;
-      margin: 1rem 0;
-      border-radius: 12px;
-      animation: pulse 1.5s infinite;
-    }
-    .winner.p1 { background: #ff8c00; color: #000; }
-    .winner.p2 { background: #1e90ff; color: #fff; }
-
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
-    }
-  </style>
+  @media (max-width:520px){
+    button{padding:8px 10px;font-size:14px}
+    :root{--piece-ratio: 0.135;}
+  }
+</style>
 </head>
 <body>
+  <div id="status">Cargando...</div>
+  <div id="winner-message"></div>
 
-<div id="status">Turno del Jugador 1 (Naranja)</div>
-<div id="winner-message"></div>
-<div id="board"></div>
+  <div id="board-container" aria-label="Tablero Squadro">
+    <div class="overlay" id="overlay"></div>
+  </div>
 
-<div class="controls">
-  <button id="reset">Jugar de nuevo</button>
-  <button id="undo" disabled>Deshacer</button>
-</div>
+  <div class="controls">
+    <button id="reset">Jugar de nuevo</button>
+    <button id="undo" disabled>Deshacer</button>
+  </div>
 
 <script>
-/* ====================== REGLAS OFICIALES ====================== */
-const STEPS_OUT = [1, 1, 2, 2, 3];
-const STEPS_BACK = [3, 3, 2, 2, 1];
+/* ====== REGLAS ====== */
+const STEPS_OUT_P1 = [3,1,2,1,3];
+const STEPS_BACK_P1 = [1,3,2,3,1];
+const STEPS_OUT_P2 = [1,3,2,3,1];
+const STEPS_BACK_P2 = [3,1,2,1,3];
 const CENTRAL_START = 6, CENTRAL_END = 10;
 const WIN_CONDITION = 4;
+const TOTAL_POS = 16;
 
-/* ====================== ESTADO ====================== */
+/* ====== ESTADO ====== */
 let state = {
-  p1: Array.from({length:5}, (_,i) => ({lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:true})),
-  p2: Array.from({length:5}, (_,i) => ({lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:false})),
-  turn: 1,
-  p1Done: 0,
-  p2Done: 0
+  p1: Array.from({length:5}, (_,i) => ({ lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:true })),
+  p2: Array.from({length:5}, (_,i) => ({ lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:false })),
+  turn: 1, p1Done: 0, p2Done: 0
 };
 const history = [];
+const tracks = new Map();
 
-/* ====================== CREAR TABLERO ====================== */
-function createBoard() {
-  const board = document.getElementById('board');
-  board.innerHTML = '';
+/* ====== DOM ====== */
+const boardContainer = document.getElementById('board-container');
+const overlay = document.getElementById('overlay');
+const statusEl = document.getElementById('status');
+const winnerEl = document.getElementById('winner-message');
 
-  for (let r = 0; r < 7; r++) {
-    for (let c = 0; c < 7; c++) {
-      const div = document.createElement('div');
-      const isTrough = (r === 0 || r === 6) || (c === 0 || c === 6);
-      div.className = isTrough ? 'trough' : 'slot';
+/* ====== RESPONSIVE: Recalcular coordenadas ====== */
+function getBoardSize(){ return boardContainer.clientWidth; }
 
-      if (isTrough) {
-        div.dataset.trough = `${r}-${c}`;
-        if (r >= 1 && r <= 5 && c === 0) div.dataset.start = `h${r}`;
-        if (r >= 1 && r <= 5 && c === 6) div.dataset.end = `h${r}`;
-        if (c >= 1 && c <= 5 && r === 0) div.dataset.start = `v${c}`;
-        if (c >= 1 && c <= 5 && r === 6) div.dataset.end = `v${c}`;
+function buildTracks(){
+  tracks.clear();
+  const size = getBoardSize();
+  const scale = size / 550; // 550px = tamaño original de diseño
 
-        if ((r === 0 && c >= 1 && c <= 5) || (c === 0 && r >= 1 && r <= 5)) {
-          const lane = r === 0 ? c : r;
-          const out = STEPS_OUT[lane-1];
-          const back = STEPS_BACK[lane-1];
-          const label = document.createElement('div');
-          label.className = 'steps';
-          label.textContent = `${out} to ${back}`;
-          div.appendChild(label);
-        }
-      } else {
-        div.dataset.row = r;
-        div.dataset.col = c;
-      }
-      board.appendChild(div);
-    }
+  // Coordenadas base (diseño original 550x550)
+  const baseX = [40, 117, 196, 275, 353, 433, 117, 196, 275, 353, 433, 433, 433, 433, 433, 433];
+  const baseY = [40, 120, 201, 278, 358, 436, 120, 201, 278, 358, 436, 40, 40, 40, 40, 40];
+
+  const holeX = baseX.map(x => Math.round(x * scale));
+  const holeY = baseY.map(y => Math.round(y * scale));
+
+  const p1Top = { h1:120, h2:201, h3:278, h4:358, h5:436 };
+  for (let lane=1; lane<=5; lane++){
+    const y = Math.round(p1Top[`h${lane}`] * scale);
+    const positions = holeX.map(x => ({ x, y }));
+    tracks.set(`h${lane}`, { positions });
+  }
+
+  const p2Left = { v1:117, v2:196, v3:275, v4:353, v5:433 };
+  for (let lane=1; lane<=5; lane++){
+    const x = Math.round(p2Left[`v${lane}`] * scale);
+    const positions = holeY.map(y => ({ x, y }));
+    tracks.set(`v${lane}`, { positions });
   }
 }
 
-/* ====================== POSICIÓN → SLOT ====================== */
-function getSlot(piece) {
-  const {pos, lane, horizontal} = piece;
-  let r, c;
+/* ====== RENDER ====== */
+function render(){
+  overlay.innerHTML = '';
 
-  if (horizontal) {
-    if (pos === 0) return `[data-start="h${lane}"]`;
-    if (pos <= 5) { r = lane; c = pos; }
-    else if (pos <= 10) { r = lane; c = pos - 5; }
-    else if (pos <= 15) { r = lane; c = pos - 10; }
-    else return null;
-  } else {
-    if (pos === 0) return `[data-start="v${lane}"]`;
-    if (pos <= 5) { r = pos; c = lane; }
-    else if (pos <= 10) { r = pos - 5; c = lane; }
-    else if (pos <= 15) { r = pos - 10; c = lane; }
-    else return null;
-  }
-
-  return `[data-row="${r}"][data-col="${c}"]`;
-}
-
-/* ====================== RENDER ====================== */
-function render() {
-  document.querySelectorAll('.piece').forEach(p => p.remove());
-
-  [...state.p1, ...state.p2].forEach(p => {
-    const sel = getSlot(p);
-    if (!sel) return;
-    const slot = document.querySelector(sel);
-    if (!slot) return;
-
+  state.p1.forEach(p => {
+    if (p.done) return;
+    const t = tracks.get(`h${p.lane}`);
+    if (!t) return;
+    const pos = t.positions[p.pos];
     const el = document.createElement('div');
-    el.id = `piece-${p.horizontal?'h':'v'}-${p.lane}`;
-    el.className = `piece ${p.horizontal?'p1':'p2'} ${p.done?'completed':''}`;
-    el.dataset.player = p.horizontal ? '1' : '2';
+    el.className = `piece p1 ${p.done ? 'completed' : ''}`;
+    el.style.left = `${pos.x}px`;
+    el.style.top = `${pos.y}px`;
+    el.dataset.player = '1';
     el.dataset.lane = p.lane;
-
-    if (!p.done) {
-      if (p.horizontal) el.classList.add(p.dir > 0 ? 'dir-right' : 'dir-left');
-      else el.classList.add(p.dir > 0 ? 'dir-down' : 'dir-up');
-    }
-
-    slot.appendChild(el);
+    el.id = `piece-h-${p.lane}`;
+    if (state.turn === 1 && !p.done) el.style.cursor = 'pointer';
+    overlay.appendChild(el);
   });
+
+  state.p2.forEach(p => {
+    if (p.done) return;
+    const t = tracks.get(`v${p.lane}`);
+    if (!t) return;
+    const pos = t.positions[p.pos];
+    const el = document.createElement('div');
+    el.className = `piece p2 ${p.done ? 'completed' : ''}`;
+    el.style.left = `${pos.x}px`;
+    el.style.top = `${pos.y}px`;
+    el.dataset.player = '2';
+    el.dataset.lane = p.lane;
+    el.id = `piece-v-${p.lane}`;
+    overlay.appendChild(el);
+  });
+
+  updateStatus();
 }
 
-/* ====================== MOVER ====================== */
-function movePiece(piece, myArr, oppArr) {
-  if (piece.done) return {myArr, oppArr};
+/* ====== ANIMACIÓN ====== */
+async function animateMove(el, from, to, desc){
+  const t = tracks.get(`${desc.horizontal ? 'h' : 'v'}${desc.lane}`);
+  if (!t) return;
+  const dir = to > from ? 1 : -1;
+  for (let i=1; i<=Math.abs(to-from); i++){
+    const idx = from + dir * i;
+    if (idx < 0 || idx >= TOTAL_POS) break;
+    const pos = t.positions[idx];
+    el.style.transition = 'left 260ms cubic-bezier(.2,.9,.3,1), top 260ms cubic-bezier(.2,.9,.3,1)';
+    el.style.left = `${pos.x}px`;
+    el.style.top = `${pos.y}px`;
+    await new Promise(r => setTimeout(r, 280));
+  }
+  el.style.transition = '';
+}
 
-  const steps = piece.dir > 0 ? STEPS_OUT[piece.lane-1] : STEPS_BACK[piece.lane-1];
+/* ====== MOVIMIENTO (con ID lógico) ====== */
+function movePiece(desc, myArr, oppArr){
+  const piece = myArr.find(p => p.lane === desc.lane && p.horizontal === desc.horizontal);
+  if (!piece || piece.done) {
+    return { myArr, oppArr, captured:false, completed:false, fromPos:0, toPos:0 };
+  }
+
+  const steps = piece.dir > 0
+    ? (piece.horizontal ? STEPS_OUT_P1 : STEPS_OUT_P2)[piece.lane-1]
+    : (piece.horizontal ? STEPS_BACK_P1 : STEPS_BACK_P2)[piece.lane-1];
+
   let target = piece.pos + piece.dir * steps;
+  target = Math.max(0, Math.min(TOTAL_POS - 1, target));
+
+  const track = tracks.get(`${piece.horizontal ? 'h' : 'v'}${piece.lane}`);
   let captured = null;
 
-  for (let i = 1; i <= steps; i++) {
-    const check = piece.pos + piece.dir * i;
-    if (check < CENTRAL_START || check > CENTRAL_END) continue;
-
-    const centerCoord = check - 5;
-    let opp = null;
-
-    if (piece.horizontal) {
-      opp = oppArr.find(o => !o.horizontal && o.lane === centerCoord && o.pos === piece.lane + 5);
-    } else {
-      opp = oppArr.find(o => o.horizontal && o.lane === centerCoord && o.pos === piece.lane + 5);
+  for (let i=1; i<=steps; i++){
+    const idx = piece.pos + piece.dir * i;
+    if (idx < CENTRAL_START || idx > CENTRAL_END) continue;
+    const check = track.positions[idx];
+    for (const op of oppArr){
+      if (op.done) continue;
+      const opTrack = tracks.get(`${op.horizontal ? 'h' : 'v'}${op.lane}`);
+      if (!opTrack) continue;
+      const opPos = opTrack.positions[op.pos];
+      if (Math.abs(opPos.x - check.x) < 15 && Math.abs(opPos.y - check.y) < 15){
+        captured = op;
+        target = Math.max(0, Math.min(TOTAL_POS - 1, idx + piece.dir));
+        break;
+      }
     }
-
-    if (opp) {
-      captured = opp;
-      target = check + piece.dir;
-      break;
-    }
+    if (captured) break;
   }
 
-  let newPos = Math.max(0, Math.min(15, target));
+  let newPos = target;
   let newDir = piece.dir;
   let turned = piece.turned;
   let done = piece.done;
 
-  if (piece.dir > 0 && newPos >= 15) {
-    newPos = 15;
-    newDir = -1;
-    turned = true;
-  }
-
-  if (piece.dir < 0 && newPos <= 0 && turned) {
-    newPos = 0;
-    done = true;
-  }
+  if (piece.dir > 0 && newPos >= 15) { newPos = 15; newDir = -1; turned = true; }
+  if (piece.dir < 0 && newPos <= 0 && turned) { newPos = 0; done = true; }
 
   const newPiece = {...piece, pos: newPos, dir: newDir, turned, done};
-  const newMy = myArr.map(p => p === piece ? newPiece : p);
 
-  let newOpp = [...oppArr];
-  if (captured) {
-    const resetPos = captured.dir > 0 ? 0 : 15;
-    newOpp = newOpp.map(o => o === captured ? {...o, pos: resetPos, dir: captured.dir > 0 ? 1 : -1, turned: false} : o);
+  const newMy = myArr.map(p =>
+    (p.lane === desc.lane && p.horizontal === desc.horizontal) ? newPiece : {...p}
+  );
+
+  let newOpp = oppArr.map(o => ({...o}));
+  if (captured){
+    const reset = captured.dir > 0 ? 0 : 15;
+    const resetDir = captured.dir > 0 ? 1 : -1;
+    newOpp = newOpp.map(o =>
+      (o.lane === captured.lane && o.horizontal === captured.horizontal)
+        ? {...o, pos: reset, dir: resetDir, turned: false, done: false}
+        : o
+    );
   }
 
-  if (done && !piece.done) {
-    if (piece.horizontal) state.p1Done++;
-    else state.p2Done++;
-  }
-
-  return {myArr: newMy, oppArr: newOpp};
+  return {
+    myArr: newMy,
+    oppArr: newOpp,
+    captured: !!captured,
+    completed: done && !piece.done,
+    fromPos: piece.pos,
+    toPos: newPos
+  };
 }
 
-/* ====================== IA ====================== */
-function aiMove() {
+/* ====== EVENTOS ====== */
+overlay.addEventListener('click', async e => {
+  if (state.turn !== 1) return;
+  const el = e.target.closest('.piece');
+  if (!el || el.dataset.player !== '1') return;
+  const lane = +el.dataset.lane;
+  const desc = { horizontal: true, lane };
+
   saveState();
-  let best = null, bestScore = -Infinity;
-  for (let i = 0; i < state.p2.length; i++) {
-    if (state.p2[i].done) continue;
-    const {myArr, oppArr} = movePiece(state.p2[i], [...state.p2], [...state.p1]);
-    const tempState = {...state, p2: myArr, p1: oppArr, turn: 1};
-    const score = minimax(tempState, 4, -Infinity, Infinity, false);
-    if (score > bestScore) { bestScore = score; best = i; }
+  const res = movePiece(desc, state.p1, state.p2);
+  const pieceEl = document.getElementById(`piece-h-${lane}`);
+  state.p1 = res.myArr;
+  state.p2 = res.oppArr;
+  if (res.completed) state.p1Done++;
+  state.turn = 2;
+  if (pieceEl && res.fromPos !== res.toPos) {
+    await animateMove(pieceEl, res.fromPos, res.toPos, desc);
   }
-  if (best !== null) {
-    const {myArr, oppArr} = movePiece(state.p2[best], state.p2, state.p1);
-    state.p2 = myArr; state.p1 = oppArr; state.turn = 1;
-    render(); updateStatus(); checkWin();
-  }
-}
+  render();
+  checkWin();
+});
 
-function minimax(s, depth, a, b, max) {
-  if (s.p2Done >= WIN_CONDITION) return 10000;
-  if (s.p1Done >= WIN_CONDITION) return -10000;
-  if (depth === 0) return evaluate(s);
-
-  const pieces = max ? s.p2 : s.p1;
-  let best = max ? -Infinity : Infinity;
-
-  for (let p of pieces) {
-    if (p.done) continue;
-    const oppArr = max ? s.p1 : s.p2;
-    const {myArr, oppArr: newOpp} = movePiece(p, [...pieces], [...oppArr]);
+async function aiMove(){
+  saveState();
+  const possible = state.p2.filter(p => !p.done);
+  const moves = possible.map(p => {
+    const desc = { horizontal: p.horizontal, lane: p.lane };
+    const res = movePiece(desc, [...state.p2], [...state.p1]);
     const ns = {
-      ...s,
-      p1: max ? newOpp : myArr,
-      p2: max ? myArr : newOpp,
-      p1Done: s.p1Done + (max ? 0 : (myArr.some(x => x.done && !pieces.includes(x)) ? 1 : 0)),
-      p2Done: s.p2Done + (max ? (myArr.some(x => x.done && !pieces.includes(x)) ? 1 : 0) : 0)
+      ...state,
+      p2: res.myArr,
+      p1: res.oppArr,
+      p2Done: state.p2Done + (res.completed ? 1 : 0),
+      turn: 1
     };
-    const val = minimax(ns, depth-1, a, b, !max);
-    best = max ? Math.max(best, val) : Math.min(best, val);
-    if (max) a = Math.max(a, best); else b = Math.min(b, best);
-    if (b <= a) break;
+    return { desc, score: minimax(ns, 6, -Infinity, Infinity, true), res };
+  });
+
+  if (!moves.length) { state.turn = 1; render(); return; }
+
+  const best = moves.sort((a,b) => b.score - a.score)[0];
+  const el = document.getElementById(`piece-v-${best.desc.lane}`);
+  state.p2 = best.res.myArr;
+  state.p1 = best.res.oppArr;
+  if (best.res.completed) state.p2Done++;
+  state.turn = 1;
+  if (el && best.res.fromPos !== best.res.toPos) {
+    await animateMove(el, best.res.fromPos, best.res.toPos, best.desc);
   }
-  return best;
+  render();
+  checkWin();
 }
 
-function evaluate(s) {
-  let score = (s.p2Done - s.p1Done) * 100;
-  s.p2.forEach(p => { if (!p.done) score += p.turned ? (16 - p.pos) * 1.5 : p.pos; });
-  s.p1.forEach(p => { if (!p.done) score -= p.turned ? (16 - p.pos) * 1.5 : p.pos; });
+/* ====== MINIMAX ====== */
+function minimax(s, d, a, b, max){
+  if (s.p2Done >= WIN_CONDITION) return 1e9 + d*1000;
+  if (s.p1Done >= WIN_CONDITION) return -1e9 - d*1000;
+  if (d === 0) return evaluate(s);
+  const pieces = (max ? s.p2 : s.p1).filter(p => !p.done);
+  if (!pieces.length) return evaluate(s);
+
+  if (max){
+    let best = -Infinity;
+    for (const p of pieces){
+      const desc = { horizontal: p.horizontal, lane: p.lane };
+      const res = movePiece(desc, max ? [...s.p2] : [...s.p1], max ? [...s.p1] : [...s.p2]);
+      const ns = {
+        ...s,
+        p2: max ? res.myArr : res.oppArr,
+        p1: max ? res.oppArr : res.myArr,
+        p1Done: s.p1Done + (!max && res.completed ? 1 : 0),
+        p2Done: s.p2Done + (max && res.completed ? 1 : 0)
+      };
+      best = Math.max(best, minimax(ns, d-1, a, b, !max));
+      if (best >= b) break;
+      a = Math.max(a, best);
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const p of pieces){
+      const desc = { horizontal: p.horizontal, lane: p.lane };
+      const res = movePiece(desc, max ? [...s.p2] : [...s.p1], max ? [...s.p1] : [...s.p2]);
+      const ns = {
+        ...s,
+        p2: max ? res.myArr : res.oppArr,
+        p1: max ? res.oppArr : res.myArr,
+        p1Done: s.p1Done + (!max && res.completed ? 1 : 0),
+        p2Done: s.p2Done + (max && res.completed ? 1 : 0)
+      };
+      best = Math.min(best, minimax(ns, d-1, a, b, !max));
+      if (best <= a) break;
+      b = Math.min(b, best);
+    }
+    return best;
+  }
+}
+
+function evaluate(s){
+  let score = (s.p2Done - s.p1Done) * 100000;
+  s.p2.forEach(p => { if(!p.done) score += (p.turned ? 15-p.pos : p.pos) * (p.turned?900:650); });
+  s.p1.forEach(p => { if(!p.done) score -= (p.turned ? 15-p.pos : p.pos) * (p.turned?900:650); });
   return score;
 }
 
-/* ====================== UI ====================== */
-function saveState() {
+/* ====== UTIL ====== */
+function saveState(){
   history.push({
+    ...state,
     p1: state.p1.map(p => ({...p})),
-    p2: state.p2.map(p => ({...p})),
-    turn: state.turn,
-    p1Done: state.p1Done,
-    p2Done: state.p2Done
+    p2: state.p2.map(p => ({...p}))
   });
   document.getElementById('undo').disabled = false;
 }
 
-function showWinner(player) {
-  const msg = document.getElementById('winner-message');
-  msg.innerHTML = `
-    <div class="winner ${player}">
-      ${player === 'p1' ? 'GANASTE TÚ (NARANJA)' : 'GANÓ LA IA (AZUL)'} 
-    </div>
-  `;
+function updateStatus(){
+  if (state.p1Done >= WIN_CONDITION) showWinner('p1');
+  else if (state.p2Done >= WIN_CONDITION) showWinner('p2');
+  else statusEl.textContent = `Turno: ${state.turn===1?'Tú (Amarillo)':'IA (Rojo)'} • ${state.p1Done}-${state.p2Done}`;
+}
+
+function checkWin(){
+  if (state.turn === 2) setTimeout(aiMove, 500);
+}
+
+function showWinner(p){
+  winnerEl.innerHTML = `<div style="font-size:24px;font-weight:700;color:#ffd700;background:rgba(0,0,0,.7);padding:12px;border-radius:12px">${p==='p1'?'¡GANASTE!':'¡GANÓ LA IA!'}</div>`;
   document.getElementById('undo').disabled = true;
-  document.getElementById('reset').textContent = 'Jugar de nuevo';
 }
 
-function updateStatus() {
-  const el = document.getElementById('status');
-  if (state.p1Done >= WIN_CONDITION) {
-    el.textContent = '';
-    showWinner('p1');
-  } else if (state.p2Done >= WIN_CONDITION) {
-    el.textContent = '';
-    showWinner('p2');
-  } else {
-    el.textContent = `Turno: ${state.turn===1?'Tú (Naranja)':'IA (Azul)'} | ${state.p1Done} - ${state.p2Done}`;
-    document.getElementById('winner-message').innerHTML = '';
-  }
+/* ====== INICIO ====== */
+function createBoard(){
+  buildTracks();
+  state.p1.forEach(p => { p.pos=0; p.dir=1; p.turned=false; p.done=false; });
+  state.p2.forEach(p => { p.pos=0; p.dir=1; p.turned=false; p.done=false; });
+  state.p1Done = state.p2Done = 0;
+  state.turn = 1;
+  render();
 }
 
-function checkWin() {
-  if (state.p1Done >= WIN_CONDITION || state.p2Done >= WIN_CONDITION) return;
-  if (state.turn === 2) setTimeout(aiMove, 700);
-}
-
-// Click
-document.getElementById('board').addEventListener('click', e => {
-  const piece = e.target.closest('.piece');
-  if (!piece || state.turn !== 1 || piece.dataset.player !== '1') return;
-
-  const lane = +piece.dataset.lane;
-  const p = state.p1.find(x => x.lane === lane);
-  if (p.done) return;
-
-  saveState();
-  const {myArr, oppArr} = movePiece(p, state.p1, state.p2);
-  state.p1 = myArr; state.p2 = oppArr; state.turn = 2;
-
-  render(); updateStatus(); checkWin();
-});
-
-// Deshacer
-document.getElementById('undo').addEventListener('click', () => {
-  if (history.length === 0) return;
-  state = history.pop();
-  render(); updateStatus();
-  document.getElementById('undo').disabled = history.length === 0;
-});
-
-// Reiniciar / Jugar de nuevo
-document.getElementById('reset').addEventListener('click', () => {
+/* ====== BOTONES ====== */
+document.getElementById('reset').onclick = () => {
   history.length = 0;
   state = {
-    p1: Array.from({length:5}, (_,i) => ({lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:true})),
-    p2: Array.from({length:5}, (_,i) => ({lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:false})),
-    turn: 1, p1Done: 0, p2Done: 0
+    p1: Array.from({length:5},(_,i)=>({lane:i+1,pos:0,dir:1,turned:false,done:false,horizontal:true})),
+    p2: Array.from({length:5},(_,i)=>({lane:i+1,pos:0,dir:1,turned:false,done:false,horizontal:false})),
+    turn:1, p1Done:0, p2Done:0
   };
-  document.getElementById('winner-message').innerHTML = '';
-  document.getElementById('reset').textContent = 'Jugar de nuevo';
-  render(); updateStatus();
+  winnerEl.innerHTML = '';
+  createBoard();
   document.getElementById('undo').disabled = true;
+};
+
+document.getElementById('undo').onclick = () => {
+  if (!history.length) return;
+  state = history.pop();
+  render();
+  document.getElementById('undo').disabled = !history.length;
+};
+
+/* ====== RESPONSIVE ====== */
+window.addEventListener('resize', () => {
+  buildTracks();
+  render();
 });
 
-/* ====================== INICIO ====================== */
+/* ====== INICIAR ====== */
 createBoard();
-render();
-updateStatus();
 </script>
 </body>
 </html>
