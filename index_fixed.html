@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Squadro — Responsive & Final</title>
+<style>
+  :root{
+    --size: min(92vmin, 900px);
+    --piece-ratio: 0.145; /* 80px / 550px ≈ 0.145 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background: url('img/Fondo.png') center/cover no-repeat fixed;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
+    min-height:100vh;
+    padding:16px;
+    color:#fff;
+  }
+
+  #status{font-weight:700;padding:8px 12px;background:rgba(0,0,0,0.45);border-radius:10px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  button{padding:10px 16px;border-radius:10px;border:2px solid #ffd700;background:#111;color:#ffd700;cursor:pointer;font-weight:700}
+  button:hover{transform:translateY(-3px);background:#ffd700;color:#000}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+  #board-container{
+    width:var(--size);
+    height:var(--size);
+    position:relative;
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+    background: url('img/Tablero.png') center/contain no-repeat;
+    background-size:100% 100%;
+  }
+
+  .overlay{position:absolute;inset:0;pointer-events:none}
+
+  .piece{
+    position:absolute;
+    width: calc(var(--size) * var(--piece-ratio));
+    height: calc(var(--size) * var(--piece-ratio));
+    transform:translate(-50%,-50%);
+    transition:left 260ms cubic-bezier(.2,.9,.3,1), top 260ms cubic-bezier(.2,.9,.3,1);
+    pointer-events:auto;
+    z-index:20;
+    user-select:none;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+  }
+  .p1{background-image:url('img/amarillo.png')}
+  .p2{background-image:url('img/rojo.png');filter:brightness(.95)}
+  .piece.completed{opacity:.45;transform:translate(-50%,-50%) scale(.85)}
+
+  #winner-message{min-height:48px}
+
+  @media (max-width:520px){
+    button{padding:8px 10px;font-size:14px}
+    :root{--piece-ratio: 0.135;}
+  }
+</style>
+</head>
+<body>
+  <div id="status">Cargando...</div>
+  <div id="winner-message"></div>
+
+  <div id="board-container" aria-label="Tablero Squadro">
+    <div class="overlay" id="overlay"></div>
+  </div>
+
+  <div class="controls">
+    <button id="reset">Jugar de nuevo</button>
+    <button id="undo" disabled>Deshacer</button>
+  </div>
+
+<script>
+/* ====== REGLAS ====== */
+const STEPS_OUT_P1 = [3,1,2,1,3];
+const STEPS_BACK_P1 = [1,3,2,3,1];
+const STEPS_OUT_P2 = [1,3,2,3,1];
+const STEPS_BACK_P2 = [3,1,2,1,3];
+const CENTRAL_START = 6, CENTRAL_END = 10;
+const WIN_CONDITION = 4;
+const TOTAL_POS = 16;
+
+/* ====== ESTADO ====== */
+let state = {
+  p1: Array.from({length:5}, (_,i) => ({ lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:true })),
+  p2: Array.from({length:5}, (_,i) => ({ lane:i+1, pos:0, dir:1, turned:false, done:false, horizontal:false })),
+  turn: 1, p1Done: 0, p2Done: 0
+};
+const history = [];
+const tracks = new Map();
+
+/* ====== DOM ====== */
+const boardContainer = document.getElementById('board-container');
+const overlay = document.getElementById('overlay');
+const statusEl = document.getElementById('status');
+const winnerEl = document.getElementById('winner-message');
+
+/* ====== RESPONSIVE: Recalcular coordenadas ====== */
+function getBoardSize(){ return boardContainer.clientWidth; }
+
+function buildTracks(){
+  tracks.clear();
+  const size = getBoardSize();
+  const scale = size / 550; // 550px = tamaño original de diseño
+
+  // Coordenadas base (diseño original 550x550)
+  const baseX = [40, 117, 196, 275, 353, 433, 117, 196, 275, 353, 433, 433, 433, 433, 433, 433];
+  const baseY = [40, 120, 201, 278, 358, 436, 120, 201, 278, 358, 436, 40, 40, 40, 40, 40];
+
+  const holeX = baseX.map(x => Math.round(x * scale));
+  const holeY = baseY.map(y => Math.round(y * scale));
+
+  const p1Top = { h1:120, h2:201, h3:278, h4:358, h5:436 };
+  for (let lane=1; lane<=5; lane++){
+    const y = Math.round(p1Top[`h${lane}`] * scale);
+    const positions = holeX.map(x => ({ x, y }));
+    tracks.set(`h${lane}`, { positions });
+  }
+
+  const p2Left = { v1:117, v2:196, v3:275, v4:353, v5:433 };
+  for (let lane=1; lane<=5; lane++){
+    const x = Math.round(p2Left[`v${lane}`] * scale);
+    const positions = holeY.map(y => ({ x, y }));
+    tracks.set(`v${lane}`, { positions });
+  }
+}
+
+/* ====== RENDER ====== */
+function render(){
+  overlay.innerHTML = '';
+
+  state.p1.forEach(p => {
+    if (p.done) return;
+    const t = tracks.get(`h${p.lane}`);
+    if (!t) return;
+    const pos = t.positions[p.pos];
+    const el = document.createElement('div');
+    el.className = `piece p1 ${p.done ? 'completed' : ''}`;
+    el.style.left = `${pos.x}px`;
+    el.style.top = `${pos.y}px`;
+    el.dataset.player = '1';
+    el.dataset.lane = p.lane;
+    el.id = `piece-h-${p.lane}`;
+    if (state.turn === 1 && !p.done) el.style.cursor = 'pointer';
+    overlay.appendChild(el);
+  });
+
+  state.p2.forEach(p => {
+    if (p.done) return;
+    const t = tracks.get(`v${p.lane}`);
+    if (!t) return;
+    const pos = t.positions[p.pos];
+    const el = document.createElement('div');
+    el.className = `piece p2 ${p.done ? 'completed' : ''}`;
+    el.style.left = `${pos.x}px`;
+    el.style.top = `${pos.y}px`;
+    el.dataset.player = '2';
+    el.dataset.lane = p.lane;
+    el.id = `piece-v-${p.lane}`;
+    overlay.appendChild(el);
+  });
+
+  updateStatus();
+}
+
+/* ====== ANIMACIÓN ====== */
+async function animateMove(el, from, to, desc){
+  const t = tracks.get(`${desc.horizontal ? 'h' : 'v'}${desc.lane}`);
+  if (!t) return;
+  const dir = to > from ? 1 : -1;
+  for (let i=1; i<=Math.abs(to-from); i++){
+    const idx = from + dir * i;
+    if (idx < 0 || idx >= TOTAL_POS) break;
+    const pos = t.positions[idx];
+    el.style.transition = 'left 260ms cubic-bezier(.2,.9,.3,1), top 260ms cubic-bezier(.2,.9,.3,1)';
+    el.style.left = `${pos.x}px`;
+    el.style.top = `${pos.y}px`;
+    await new Promise(r => setTimeout(r, 280));
+  }
+  el.style.transition = '';
+}
+
+/* ====== MOVIMIENTO (con ID lógico) ====== */
+function movePiece(desc, myArr, oppArr){
+  const piece = myArr.find(p => p.lane === desc.lane && p.horizontal === desc.horizontal);
+  if (!piece || piece.done) {
+    return { myArr, oppArr, captured:false, completed:false, fromPos:0, toPos:0 };
+  }
+
+  const steps = piece.dir > 0
+    ? (piece.horizontal ? STEPS_OUT_P1 : STEPS_OUT_P2)[piece.lane-1]
+    : (piece.horizontal ? STEPS_BACK_P1 : STEPS_BACK_P2)[piece.lane-1];
+
+  let target = piece.pos + piece.dir * steps;
+  target = Math.max(0, Math.min(TOTAL_POS - 1, target));
+
+  const track = tracks.get(`${piece.horizontal ? 'h' : 'v'}${piece.lane}`);
+  let captured = null;
+
+  for (let i=1; i<=steps; i++){
+    const idx = piece.pos + piece.dir * i;
+    if (idx < CENTRAL_START || idx > CENTRAL_END) continue;
+    const check = track.positions[idx];
+    for (const op of oppArr){
+      if (op.done) continue;
+      const opTrack = tracks.get(`${op.horizontal ? 'h' : 'v'}${op.lane}`);
+      if (!opTrack) continue;
+      const opPos = opTrack.positions[op.pos];
+      if (Math.abs(opPos.x - check.x) < 15 && Math.abs(opPos.y - check.y) < 15){
+        captured = op;
+        target = Math.max(0, Math.min(TOTAL_POS - 1, idx + piece.dir));
+        break;
+      }
+    }
+    if (captured) break;
+  }
+
+  let newPos = target;
+  let newDir = piece.dir;
+  let turned = piece.turned;
+  let done = piece.done;
+
+  if (piece.dir > 0 && newPos >= 15) { newPos = 15; newDir = -1; turned = true; }
+  if (piece.dir < 0 && newPos <= 0 && turned) { newPos = 0; done = true; }
+
+  const newPiece = {...piece, pos: newPos, dir: newDir, turned, done};
+
+  const newMy = myArr.map(p =>
+    (p.lane === desc.lane && p.horizontal === desc.horizontal) ? newPiece : {...p}
+  );
+
+  let newOpp = oppArr.map(o => ({...o}));
+  if (captured){
+    const reset = captured.dir > 0 ? 0 : 15;
+    const resetDir = captured.dir > 0 ? 1 : -1;
+    newOpp = newOpp.map(o =>
+      (o.lane === captured.lane && o.horizontal === captured.horizontal)
+        ? {...o, pos: reset, dir: resetDir, turned: false, done: false}
+        : o
+    );
+  }
+
+  return {
+    myArr: newMy,
+    oppArr: newOpp,
+    captured: !!captured,
+    completed: done && !piece.done,
+    fromPos: piece.pos,
+    toPos: newPos
+  };
+}
+
+/* ====== EVENTOS ====== */
+overlay.addEventListener('click', async e => {
+  if (state.turn !== 1) return;
+  const el = e.target.closest('.piece');
+  if (!el || el.dataset.player !== '1') return;
+  const lane = +el.dataset.lane;
+  const desc = { horizontal: true, lane };
+
+  saveState();
+  const res = movePiece(desc, state.p1, state.p2);
+  const pieceEl = document.getElementById(`piece-h-${lane}`);
+  state.p1 = res.myArr;
+  state.p2 = res.oppArr;
+  if (res.completed) state.p1Done++;
+  state.turn = 2;
+  if (pieceEl && res.fromPos !== res.toPos) {
+    await animateMove(pieceEl, res.fromPos, res.toPos, desc);
+  }
+  render();
+  checkWin();
+});
+
+async function aiMove(){
+  saveState();
+  const possible = state.p2.filter(p => !p.done);
+  const moves = possible.map(p => {
+    const desc = { horizontal: p.horizontal, lane: p.lane };
+    const res = movePiece(desc, [...state.p2], [...state.p1]);
+    const ns = {
+      ...state,
+      p2: res.myArr,
+      p1: res.oppArr,
+      p2Done: state.p2Done + (res.completed ? 1 : 0),
+      turn: 1
+    };
+    return { desc, score: minimax(ns, 6, -Infinity, Infinity, true), res };
+  });
+
+  if (!moves.length) { state.turn = 1; render(); return; }
+
+  const best = moves.sort((a,b) => b.score - a.score)[0];
+  const el = document.getElementById(`piece-v-${best.desc.lane}`);
+  state.p2 = best.res.myArr;
+  state.p1 = best.res.oppArr;
+  if (best.res.completed) state.p2Done++;
+  state.turn = 1;
+  if (el && best.res.fromPos !== best.res.toPos) {
+    await animateMove(el, best.res.fromPos, best.res.toPos, best.desc);
+  }
+  render();
+  checkWin();
+}
+
+/* ====== MINIMAX ====== */
+function minimax(s, d, a, b, max){
+  if (s.p2Done >= WIN_CONDITION) return 1e9 + d*1000;
+  if (s.p1Done >= WIN_CONDITION) return -1e9 - d*1000;
+  if (d === 0) return evaluate(s);
+  const pieces = (max ? s.p2 : s.p1).filter(p => !p.done);
+  if (!pieces.length) return evaluate(s);
+
+  if (max){
+    let best = -Infinity;
+    for (const p of pieces){
+      const desc = { horizontal: p.horizontal, lane: p.lane };
+      const res = movePiece(desc, max ? [...s.p2] : [...s.p1], max ? [...s.p1] : [...s.p2]);
+      const ns = {
+        ...s,
+        p2: max ? res.myArr : res.oppArr,
+        p1: max ? res.oppArr : res.myArr,
+        p1Done: s.p1Done + (!max && res.completed ? 1 : 0),
+        p2Done: s.p2Done + (max && res.completed ? 1 : 0)
+      };
+      best = Math.max(best, minimax(ns, d-1, a, b, !max));
+      if (best >= b) break;
+      a = Math.max(a, best);
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const p of pieces){
+      const desc = { horizontal: p.horizontal, lane: p.lane };
+      const res = movePiece(desc, max ? [...s.p2] : [...s.p1], max ? [...s.p1] : [...s.p2]);
+      const ns = {
+        ...s,
+        p2: max ? res.myArr : res.oppArr,
+        p1: max ? res.oppArr : res.myArr,
+        p1Done: s.p1Done + (!max && res.completed ? 1 : 0),
+        p2Done: s.p2Done + (max && res.completed ? 1 : 0)
+      };
+      best = Math.min(best, minimax(ns, d-1, a, b, !max));
+      if (best <= a) break;
+      b = Math.min(b, best);
+    }
+    return best;
+  }
+}
+
+function evaluate(s){
+  let score = (s.p2Done - s.p1Done) * 100000;
+  s.p2.forEach(p => { if(!p.done) score += (p.turned ? 15-p.pos : p.pos) * (p.turned?900:650); });
+  s.p1.forEach(p => { if(!p.done) score -= (p.turned ? 15-p.pos : p.pos) * (p.turned?900:650); });
+  return score;
+}
+
+/* ====== UTIL ====== */
+function saveState(){
+  history.push({
+    ...state,
+    p1: state.p1.map(p => ({...p})),
+    p2: state.p2.map(p => ({...p}))
+  });
+  document.getElementById('undo').disabled = false;
+}
+
+function updateStatus(){
+  if (state.p1Done >= WIN_CONDITION) showWinner('p1');
+  else if (state.p2Done >= WIN_CONDITION) showWinner('p2');
+  else statusEl.textContent = `Turno: ${state.turn===1?'Tú (Amarillo)':'IA (Rojo)'} • ${state.p1Done}-${state.p2Done}`;
+}
+
+function checkWin(){
+  if (state.turn === 2) setTimeout(aiMove, 500);
+}
+
+function showWinner(p){
+  winnerEl.innerHTML = `<div style="font-size:24px;font-weight:700;color:#ffd700;background:rgba(0,0,0,.7);padding:12px;border-radius:12px">${p==='p1'?'¡GANASTE!':'¡GANÓ LA IA!'}</div>`;
+  document.getElementById('undo').disabled = true;
+}
+
+/* ====== INICIO ====== */
+function createBoard(){
+  buildTracks();
+  state.p1.forEach(p => { p.pos=0; p.dir=1; p.turned=false; p.done=false; });
+  state.p2.forEach(p => { p.pos=0; p.dir=1; p.turned=false; p.done=false; });
+  state.p1Done = state.p2Done = 0;
+  state.turn = 1;
+  render();
+}
+
+/* ====== BOTONES ====== */
+document.getElementById('reset').onclick = () => {
+  history.length = 0;
+  state = {
+    p1: Array.from({length:5},(_,i)=>({lane:i+1,pos:0,dir:1,turned:false,done:false,horizontal:true})),
+    p2: Array.from({length:5},(_,i)=>({lane:i+1,pos:0,dir:1,turned:false,done:false,horizontal:false})),
+    turn:1, p1Done:0, p2Done:0
+  };
+  winnerEl.innerHTML = '';
+  createBoard();
+  document.getElementById('undo').disabled = true;
+};
+
+document.getElementById('undo').onclick = () => {
+  if (!history.length) return;
+  state = history.pop();
+  render();
+  document.getElementById('undo').disabled = !history.length;
+};
+
+/* ====== RESPONSIVE ====== */
+window.addEventListener('resize', () => {
+  buildTracks();
+  render();
+});
+
+/* ====== INICIAR ====== */
+createBoard();
+</script>
+</body>
+</html>
